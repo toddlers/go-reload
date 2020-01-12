@@ -51,41 +51,14 @@ func main() {
 
 	defer watcher.Close()
 
-	log.Println(">>> Go-reload")
-	log.Printf(`Watching ".go" files in %s directory, CTRL+C to stop`, directory)
-
-	go func(directory string, defaultInterval int) {
-		done := make(chan struct{})
-		go func() {
-			done <- struct{}{}
-		}()
-		ticker := time.NewTicker(time.Duration(defaultInterval) * time.Second)
-		defer ticker.Stop()
-
-		for ; ; <-ticker.C {
-			<-done
-			err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					log.Fatal(err)
-				}
-				f_mode := info.Mode()
-				if f_mode.IsDir() {
-					return nil
-				} else if f_mode.IsRegular() {
-					if filepath.Ext(path) == ".go" {
-						return watcher.Add(path)
-					}
-				}
-				return nil
-			})
-			if err != nil {
-				log.Fatal(err)
-			}
-			go func() {
-				done <- struct{}{}
-			}()
-		}
-	}(directory, defaultInterval)
+	if _, err := os.Stat(directory); err == nil {
+		log.Println(">>> Go-reload")
+		log.Printf(`Watching ".go" files in %s directory, CTRL+C to stop`, directory)
+		go startWatching(watcher, directory, defaultInterval)
+	} else {
+		log.Fatal("directory doesnt exists : ", err)
+		return
+	}
 
 	errCh := make(chan error)
 
@@ -116,6 +89,39 @@ func main() {
 	}()
 
 	log.Fatalln(<-errCh)
+}
+
+func startWatching(watcher *fsnotify.Watcher, directory string, defaultInterval int) {
+	done := make(chan struct{})
+	go func() {
+		done <- struct{}{}
+	}()
+	ticker := time.NewTicker(time.Duration(defaultInterval) * time.Second)
+	defer ticker.Stop()
+
+	for ; ; <-ticker.C {
+		<-done
+		err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				log.Fatal(err)
+			}
+			f_mode := info.Mode()
+			if f_mode.IsDir() {
+				return nil
+			} else if f_mode.IsRegular() {
+				if filepath.Ext(path) == ".go" {
+					return watcher.Add(path)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		go func() {
+			done <- struct{}{}
+		}()
+	}
 }
 
 func restart() {
