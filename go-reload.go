@@ -20,6 +20,7 @@ var (
 	cmdArgs         []string
 	cmdEnv          []string
 	cmdPath         string
+	watcher         *fsnotify.Watcher
 )
 
 func init() {
@@ -38,13 +39,13 @@ func printUsage() {
 }
 
 func main() {
-
+	var err error
 	flag.Parse()
 	if flag.NFlag() == 0 {
 		printUsage()
 	}
 
-	watcher, err := fsnotify.NewWatcher()
+	watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,36 +93,33 @@ func main() {
 }
 
 func startWatching(watcher *fsnotify.Watcher, directory string, defaultInterval int) {
-	done := make(chan struct{})
-	go func() {
-		done <- struct{}{}
-	}()
+	done := make(chan struct{}, 1)
+	done <- struct{}{}
 	ticker := time.NewTicker(time.Duration(defaultInterval) * time.Second)
 	defer ticker.Stop()
-
 	for ; ; <-ticker.C {
 		<-done
-		err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				log.Fatal(err)
-			}
-			f_mode := info.Mode()
-			if f_mode.IsDir() {
-				return nil
-			} else if f_mode.IsRegular() {
-				if filepath.Ext(path) == ".go" {
-					return watcher.Add(path)
-				}
-			}
-			return nil
-		})
+		err := filepath.Walk(directory, watchDir)
 		if err != nil {
 			log.Fatal(err)
 		}
-		go func() {
-			done <- struct{}{}
-		}()
+		done <- struct{}{}
 	}
+}
+
+func watchDir(path string, info os.FileInfo, err error) error {
+	if err != nil {
+		log.Fatal(err)
+	}
+	f_mode := info.Mode()
+	if f_mode.IsDir() {
+		return nil
+	} else if f_mode.IsRegular() {
+		if filepath.Ext(path) == ".go" {
+			return watcher.Add(path)
+		}
+	}
+	return nil
 }
 
 func restart() {
