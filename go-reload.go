@@ -41,11 +41,13 @@ func printUsage() {
 func main() {
 	var err error
 	flag.Parse()
+
 	if flag.NFlag() == 0 {
 		printUsage()
 	}
 
 	watcher, err = fsnotify.NewWatcher()
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,34 +64,34 @@ func main() {
 	}
 
 	errCh := make(chan error)
-
-	go func() {
-		for {
-			select {
-			case event := <-watcher.Events:
-				switch {
-				case event.Op&fsnotify.Write == fsnotify.Write:
-					log.Printf("Write: %s: %s", event.Op, event.Name)
-					restart()
-				case event.Op&fsnotify.Create == fsnotify.Create:
-					log.Printf("Create: %s: %s", event.Op, event.Name)
-					restart()
-				case event.Op&fsnotify.Remove == fsnotify.Remove:
-					log.Printf("Remove: %s: %s", event.Op, event.Name)
-					restart()
-				case event.Op&fsnotify.Rename == fsnotify.Rename:
-					log.Printf("Rename: %s: %s", event.Op, event.Name)
-					restart()
-				case event.Op&fsnotify.Chmod == fsnotify.Chmod:
-					log.Printf("Chmod: %s: %s", event.Op, event.Name)
-				}
-			case err := <-watcher.Errors:
-				errCh <- err
-			}
-		}
-	}()
-
+	go processEvents(errCh)
 	log.Fatalln(<-errCh)
+}
+
+func processEvents(errCh chan<- error) {
+	for {
+		select {
+		case event := <-watcher.Events:
+			switch {
+			case event.Op&fsnotify.Write == fsnotify.Write:
+				log.Printf("Write: %s: %s", event.Op, event.Name)
+				restart()
+			case event.Op&fsnotify.Create == fsnotify.Create:
+				log.Printf("Create: %s: %s", event.Op, event.Name)
+				restart()
+			case event.Op&fsnotify.Remove == fsnotify.Remove:
+				log.Printf("Remove: %s: %s", event.Op, event.Name)
+				restart()
+			case event.Op&fsnotify.Rename == fsnotify.Rename:
+				log.Printf("Rename: %s: %s", event.Op, event.Name)
+				restart()
+			case event.Op&fsnotify.Chmod == fsnotify.Chmod:
+				log.Printf("Chmod: %s: %s", event.Op, event.Name)
+			}
+		case err := <-watcher.Errors:
+			errCh <- err
+		}
+	}
 }
 
 func startWatching(watcher *fsnotify.Watcher, directory string, defaultInterval int) {
